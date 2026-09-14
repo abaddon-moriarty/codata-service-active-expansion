@@ -6,7 +6,7 @@ Cette nouvelle version permet de ne plus utiliser Google Colab et évite les pro
 
 ## Flux (3 appels HTTP depuis Make, dans l'ordre)
 
-```
+```md
 1. POST /codata/login
    Body: {"addresses": [{"Ville": "Paris", "Rue": "Rue de Rivoli"}, ...]}
    -> {"status": "logged_in", "session_id": "..."}      si pas de 2FA
@@ -69,7 +69,7 @@ export CODATA_USERNAME=... CODATA_PASSWORD=... ANTICAPTCHA_API_KEY=... SERVICE_A
 uvicorn app.main:app --reload
 ```
 
-Doc interactive : http://localhost:8000/docs
+Doc interactive : <http://localhost:8000/docs>
 
 ## Ce qui n'a pas été repris du notebook
 
