@@ -1,0 +1,6 @@
+fastapi>=0.115.0,<1.0.0
+uvicorn[standard]>=0.30.6,<1.0.0
+requests>=2.32.3,<3.0.0
+beautifulsoup4>=4.12.3,<5.0.0
+anticaptchaofficial==1.0.55
+pydantic>=2.10.0,<3.0.0
