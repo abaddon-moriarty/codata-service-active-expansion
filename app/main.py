@@ -23,6 +23,7 @@ Toute réponse d'erreur renvoie un code HTTP 4xx/5xx avec {"detail": "..."}.
 """
 
 import logging
+import threading
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
@@ -41,6 +42,7 @@ from app.config import (
     SERVICE_API_KEY,
     check_env,
 )
+from app.jobs import jobs
 from app.sessions import store
 
 logging.basicConfig(
@@ -102,25 +104,53 @@ def health():
     return {"ok": not missing, "missing_env_vars": missing}
 
 
+def _run_login(job_id: str, addresses_dicts: list[dict]) -> None:
+    """Exécuté en tâche de fond : la partie longue (reCAPTCHA) qui causait
+    les timeouts côté proxy Railway."""
+    try:
+        result = start_login(CODATA_USERNAME, CODATA_PASSWORD, ANTICAPTCHA_API_KEY)
+    except CodataError as e:
+        jobs.update(job_id, status="error", error=str(e))
+        return
+
+    entry = store.create(http_session=result["session"], addresses=addresses_dicts)
+
+    if result["outcome"] == "2fa_required":
+        store.update(entry.session_id, hidden_2fa_fields=result["hidden_2fa_fields"])
+        jobs.update(job_id, status="2fa_required", session_id=entry.session_id)
+        return
+
+    store.update(entry.session_id, status="logged_in")
+    jobs.update(job_id, status="logged_in", session_id=entry.session_id)
+
+
 @app.post("/codata/login", dependencies=[Depends(require_api_key)])
 def login(payload: LoginRequest):
     if not payload.addresses:
         raise HTTPException(status_code=400, detail="Aucune adresse fournie.")
 
-    try:
-        result = start_login(CODATA_USERNAME, CODATA_PASSWORD, ANTICAPTCHA_API_KEY)
-    except CodataError as e:
-        raise HTTPException(status_code=502, detail=str(e)) from e
-
     addresses_dicts = [a.model_dump() for a in payload.addresses]
-    entry = store.create(http_session=result["session"], addresses=addresses_dicts)
+    job = jobs.create()
 
-    if result["outcome"] == "2fa_required":
-        store.update(entry.session_id, hidden_2fa_fields=result["hidden_2fa_fields"])
-        return {"status": "2fa_required", "session_id": entry.session_id}
+    threading.Thread(
+        target=_run_login, args=(job.job_id, addresses_dicts), daemon=True
+    ).start()
 
-    store.update(entry.session_id, status="logged_in")
-    return {"status": "logged_in", "session_id": entry.session_id}
+    return {"job_id": job.job_id, "status": "processing"}
+
+
+@app.get("/codata/login/status", dependencies=[Depends(require_api_key)])
+def login_status(job_id: str):
+    job = jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="job_id inconnu ou expiré.")
+
+    response = {"status": job.status}
+    if job.session_id:
+        response["session_id"] = job.session_id
+    if job.status == "error" and job.error:
+        response["detail"] = job.error
+    return response
 
 
 @app.post("/codata/2fa", dependencies=[Depends(require_api_key)])

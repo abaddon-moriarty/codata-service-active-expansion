@@ -2,7 +2,12 @@
 Configuration du service, chargée depuis les variables d'environnement.
 Sur Railway : Project -> Variables.
 """
+
 import os
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 CODATA_USERNAME = os.environ.get("CODATA_USERNAME", "")
 CODATA_PASSWORD = os.environ.get("CODATA_PASSWORD", "")
